@@ -1,0 +1,6 @@
+{
+  "name": "Smart Predictive Maintenance Dashboard",
+  "description": "Dashboard untuk prediksi sisa umur bearing menggunakan algoritma regresi linear dan degradasi eksponensial dengan analisis AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
