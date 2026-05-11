@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { FileDown, Upload, Settings, Brain, BarChart3, TrendingUp, AlertTriangle, CheckCircle2, History, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine 
 } from 'recharts';
@@ -467,8 +469,26 @@ export default function App() {
                           <p className="text-[10px] font-mono font-bold tracking-[0.3em] text-slate-500 uppercase">Automated Report Module — Secure Link Active</p>
                         </div>
                       </div>
-                      <div className="font-serif italic text-lg leading-relaxed text-slate-300 whitespace-pre-wrap selection:bg-accent-teal/30 first-letter:text-4xl first-letter:font-bold first-letter:text-accent-teal first-letter:mr-1 first-letter:float-left">
-                        {aiReport}
+                      
+                      <div className="markdown-container selection:bg-accent-teal/30">
+                        <ReactMarkdown 
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            h1: ({ ...props }) => <h1 className="text-3xl font-serif text-white mb-6 mt-8" {...props} />,
+                            h2: ({ ...props }) => <h2 className="text-2xl font-serif text-white mb-4 mt-10 border-b border-slate-800 pb-2" {...props} />,
+                            h3: ({ ...props }) => <h3 className="text-lg font-bold text-accent-teal/90 mb-3 mt-8 uppercase tracking-wider" {...props} />,
+                            h4: ({ ...props }) => <h4 className="text-base font-bold text-slate-200 mb-2 mt-6" {...props} />,
+                            p: ({ ...props }) => <p className="mb-4 text-slate-300 leading-relaxed text-lg font-serif italic" {...props} />,
+                            ul: ({ ...props }) => <ul className="list-disc pl-6 mb-6 space-y-3 text-slate-300 font-serif italic text-lg" {...props} />,
+                            ol: ({ ...props }) => <ol className="list-decimal pl-6 mb-6 space-y-3 text-slate-300 font-serif italic text-lg" {...props} />,
+                            li: ({ ...props }) => <li className="pl-2" {...props} />,
+                            strong: ({ ...props }) => <strong className="text-white font-bold not-italic" {...props} />,
+                            hr: ({ ...props }) => <hr className="my-10 border-slate-800" {...props} />,
+                            blockquote: ({ ...props }) => <blockquote className="border-l-4 border-accent-teal/30 pl-6 italic my-8 text-slate-400 bg-accent-teal/5 py-4 rounded-r-lg" {...props} />,
+                          }}
+                        >
+                          {aiReport}
+                        </ReactMarkdown>
                       </div>
                       
                       <div className="mt-12 pt-8 border-t border-slate-800 flex justify-between items-center text-[10px] font-mono text-slate-600 uppercase tracking-widest">
