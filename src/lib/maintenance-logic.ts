@@ -189,7 +189,7 @@ function getTrendDirection(data: ProcessedData[]): 'Accelerating' | 'Stable Grow
   return 'Steady';
 }
 
-export function processAndModel(data: ProcessedData[], threshold: number, fptConfig: { manualThreshold?: number, multiplier?: number } = { multiplier: 3 }): ModelResults {
+export function processAndModel(data: ProcessedData[], threshold: number, fptConfig: { manualThreshold?: number, multiplier?: number } = { multiplier: 3 }, lang: 'id' | 'en' = 'id'): ModelResults {
   if (data.length < 5) {
     throw new Error("Insufficient data for modeling (need at least 5 points)");
   }
@@ -243,12 +243,16 @@ export function processAndModel(data: ProcessedData[], threshold: number, fptCon
       rulDays = Math.max(0, (threshold - linReg.b) / linReg.m - lastTime);
     }
 
+    const explanation = lang === 'id' 
+      ? (data.length < 15 ? "Koleksi data awal. Model memerlukan lebih banyak sampel untuk meningkatkan presisi." : "Vibrasi stabil di bawah batas FPT. Kondisi mesin terpantau sehat.")
+      : (data.length < 15 ? "Initial data collection. Model needs more samples to improve precision." : "Steady vibration below FPT limit. Machine condition is healthy.");
+
     return {
       rmse: calculateRMSE(data.map(d => d.compositeHI), data.map(d => linReg.m * d.TimeNumeric + linReg.b)),
       phScore: 0,
       stabilityIndex: Math.max(0.6, r2),
       confidenceScore: Math.round(75 + (r2 * 20)),
-      confidenceExplanation: data.length < 15 ? "Koleksi data awal. Model memerlukan lebih banyak sampel untuk meningkatkan presisi." : "Vibrasi stabil di bawah batas FPT. Kondisi mesin terpantau sehat.",
+      confidenceExplanation: explanation,
       trendDirection: trendDir,
       riskLevel: getRiskLevel(rulDays, lastHI, threshold),
       rulDays,
@@ -300,13 +304,13 @@ export function processAndModel(data: ProcessedData[], threshold: number, fptCon
 
   let explanation = "";
   if (data.length < 10) {
-    explanation = "Data minimal. Tren degradasi belum terkonfirmasi secara statistik.";
+    explanation = lang === 'id' ? "Data minimal. Tren degradasi belum terkonfirmasi secara statistik." : "Minimal data. Degradation trend not statistically confirmed.";
   } else if (stabilityIndex < 0.4) {
-    explanation = "Rendah: Fluktuasi vibrasi tinggi (noise) menghambat kestabilan prediksi RUL.";
+    explanation = lang === 'id' ? "Rendah: Fluktuasi vibrasi tinggi (noise) menghambat kestabilan prediksi RUL." : "Low: High vibration fluctuations (noise) hinder RUL prediction stability.";
   } else if (hdrPersistence < 0.5) {
-    explanation = "Moderat: Degradasi baru dimulai (FPT transisi). Menunggu persistensi trend.";
+    explanation = lang === 'id' ? "Moderat: Degradasi baru dimulai (FPT transisi). Menunggu persistensi trend." : "Moderate: Degradation just starting (FPT transition). Waiting for trend persistence.";
   } else {
-    explanation = "Tinggi: Model mengikuti kurva degradasi eksponensial dengan tingkat error rendah.";
+    explanation = lang === 'id' ? "Tinggi: Model mengikuti kurva degradasi eksponensial dengan tingkat error rendah." : "High: Model follows exponential degradation curve with low error level.";
   }
 
   let status: 'Healthy' | 'Warning' | 'Danger' = 'Warning';

@@ -10,12 +10,14 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine 
 } from 'recharts';
 import { format } from 'date-fns';
+import { translations } from './lib/translations';
 import { preprocessData, processAndModel, generateCSVTemplate, RawData, ProcessedData, ModelResults } from './lib/maintenance-logic';
 import { generateMaintenanceReport } from './services/geminiService';
 import { cn } from './lib/utils';
 
 export default function App() {
   const [data, setData] = useState<RawData[]>([]);
+  const [lang, setLang] = useState<'id' | 'en'>('id');
   const [availablePoints, setAvailablePoints] = useState<string[]>(['A', 'B', 'C', 'D']);
   const [pointPrefix, setPointPrefix] = useState('A');
   const [threshold, setThreshold] = useState(4.5);
@@ -28,6 +30,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
+  
+  const ctx = translations[lang];
 
   const handleDataParsed = (raw: RawData[]) => {
     // Deteksi Dinamis Bearing: Ambil karakter pertama yang unik dari kolom "Point" (misal: A dari AA, AV, AH)
@@ -42,7 +46,7 @@ export default function App() {
     setPointPrefix(initialPoint);
     
     setData(raw);
-    processAndModelWrapper(raw, initialPoint, threshold, fptMultiplier);
+    processAndModelWrapper(raw, initialPoint, threshold, fptMultiplier, lang);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,23 +89,23 @@ export default function App() {
       });
   };
 
-  const processAndModelWrapper = (rawData: RawData[], prefix: string, thr: number, mult: number) => {
+  const processAndModelWrapper = (rawData: RawData[], prefix: string, thr: number, mult: number, currentLang: 'id' | 'en' = lang) => {
     try {
       const allProcessed = preprocessData(rawData, prefix);
       if (allProcessed.length < 5) {
-        setError("Data terlalu sedikit untuk kategori ini (minimal 5 data point).");
+        setError(currentLang === 'id' ? "Data terlalu sedikit untuk kategori ini (minimal 5 data point)." : "Too little data for this category (minimum 5 data points).");
         setProcessedData([]);
         setResults(null);
         return;
       }
 
       setProcessedData(allProcessed); 
-      const modelResults = processAndModel(allProcessed, thr, { multiplier: mult });
+      const modelResults = processAndModel(allProcessed, thr, { multiplier: mult }, currentLang);
       setResults(modelResults);
       setError(null);
       setAiReport(null);
     } catch (err) {
-      setError("Kesalahan pemrosesan: " + (err instanceof Error ? err.message : String(err)));
+      setError(currentLang === 'id' ? ("Kesalahan pemrosesan: " + (err instanceof Error ? err.message : String(err))) : ("Processing error: " + (err instanceof Error ? err.message : String(err))));
     }
   };
 
@@ -123,11 +127,12 @@ export default function App() {
         results, 
         pointPrefix, 
         processedData[processedData.length - 1].Level,
-        threshold
+        threshold,
+        lang
       );
-      setAiReport(report || "Gagal menghasilkan laporan.");
+      setAiReport(report || (lang === 'id' ? "Gagal menghasilkan laporan." : "Failed to generate report."));
     } catch (err) {
-      setError("Gagal menggunakan Gemini AI. Pastikan API Key sudah diset di Settings.");
+      setError(lang === 'id' ? "Gagal menggunakan Gemini AI. Pastikan API Key sudah diset di Settings." : "Failed to use Gemini AI. Ensure API Key is set in Settings.");
     } finally {
       setIsGeneratingAi(false);
     }
@@ -286,23 +291,37 @@ export default function App() {
     <div className="min-h-screen bg-brand-bg text-slate-300 font-sans flex flex-col md:flex-row">
       {/* Sidebar */}
       <aside className="w-full md:w-80 bg-sidebar-bg border-r border-slate-800 p-6 flex flex-col gap-8 shadow-2xl relative z-20">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="bg-accent-teal p-2 rounded-lg shadow-[0_0_15px_rgba(45,212,191,0.3)]">
-            <TrendingUp className="text-black h-5 w-5" />
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-accent-teal p-2 rounded-lg shadow-[0_0_15px_rgba(45,212,191,0.3)]">
+                <TrendingUp className="text-black h-5 w-5" />
+              </div>
+              <h1 className="font-serif italic text-lg leading-tight text-white tracking-tight">SmartPredict<br /><span className="text-accent-teal/80 text-sm not-italic font-sans font-bold uppercase tracking-widest">{ctx.sidebar.missionControl}</span></h1>
+            </div>
+            <button 
+              onClick={() => {
+                const newLang = lang === 'id' ? 'en' : 'id';
+                setLang(newLang);
+                if (data.length > 0) processAndModelWrapper(data, pointPrefix, threshold, fptMultiplier, newLang);
+              }}
+              className="px-2 py-1 bg-slate-900 border border-slate-700 rounded-md text-[10px] font-bold text-slate-400 hover:text-white transition-colors"
+            >
+              {lang === 'id' ? '🇺🇸 EN' : '🇮🇩 ID'}
+            </button>
           </div>
-          <h1 className="font-serif italic text-lg leading-tight text-white tracking-tight">SmartPredict<br /><span className="text-accent-teal/80 text-sm not-italic font-sans font-bold uppercase tracking-widest">Mission Control</span></h1>
         </div>
 
         <div className="space-y-6 flex-1">
           <section>
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
-              <FileDown size={14} className="text-accent-teal" /> Dataset Engine
+              <FileDown size={14} className="text-accent-teal" /> {ctx.sidebar.datasetEngine}
             </h2>
             <button 
               onClick={handleDownloadTemplate}
               className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-medium py-2.5 rounded-md transition-colors flex items-center justify-center gap-2 text-slate-300"
             >
-              Download Template CSV
+              {ctx.sidebar.downloadTemplate}
             </button>
             <div className="mt-3 relative">
               <input 
@@ -316,23 +335,23 @@ export default function App() {
                 htmlFor="file-upload"
                 className="w-full bg-accent-teal/10 text-accent-teal border border-accent-teal/30 hover:bg-accent-teal/20 text-xs font-bold py-3 rounded-md transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Upload size={14} /> Upload Measurement
+                <Upload size={14} /> {ctx.sidebar.uploadMeasurement}
               </label>
             </div>
             <button 
               onClick={loadBuiltInDataset}
               className="w-full mt-3 bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 text-[10px] font-bold py-2 rounded-md transition-all flex items-center justify-center gap-2"
             >
-              <History size={12} className="text-accent-teal" /> Gunakan Dataset Bawaan (108-JA)
+              <History size={12} className="text-accent-teal" /> {ctx.sidebar.useBuiltIn}
             </button>
           </section>
 
           <section className="space-y-4">
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
-              <Settings size={14} className="text-accent-teal" /> Parameters
+              <Settings size={14} className="text-accent-teal" /> {ctx.sidebar.parameters}
             </h2>
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Select Bearing</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">{ctx.sidebar.selectBearing}</label>
               <select 
                 value={pointPrefix}
                 onChange={(e) => {
@@ -347,7 +366,7 @@ export default function App() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Failure Threshold (mm/s)</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">{ctx.sidebar.failureThreshold}</label>
               <div className="flex items-center gap-4 mt-1.5">
                 <input 
                   type="range" 
@@ -366,7 +385,7 @@ export default function App() {
               </div>
             </div>
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">FPT Sensitivity (σ)</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">{ctx.sidebar.fptSensitivity}</label>
               <div className="flex items-center gap-4 mt-1.5">
                 <input 
                   type="range" 
@@ -383,7 +402,7 @@ export default function App() {
                 />
                 <span className="text-xs font-mono text-white bg-slate-800 px-2 py-1 rounded border border-slate-700">{fptMultiplier.toFixed(1)}</span>
               </div>
-              <p className="text-[9px] text-slate-500 mt-1">Mean + N*StdDev baseline threshold.</p>
+              <p className="text-[9px] text-slate-500 mt-1">{ctx.sidebar.fptHint}</p>
             </div>
           </section>
         </div>
@@ -391,7 +410,7 @@ export default function App() {
         <div className="mt-auto pt-6 border-t border-slate-800 space-y-4">
           <div className="flex items-center gap-3">
              <div className="h-2 w-2 rounded-full bg-teal-500 shadow-[0_0_8px_#2dd4bf]"></div>
-             <span className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">System Status: Normal</span>
+             <span className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">{ctx.sidebar.systemStatus}</span>
           </div>
           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-tighter">
             SCIPY_EXP_REG_01 | 64-BIT PRECISION
@@ -417,20 +436,20 @@ export default function App() {
             <div className="bg-slate-900 p-8 rounded-full border border-slate-800 mb-4 inline-block">
               <BarChart3 size={64} className="text-slate-700" />
             </div>
-            <h2 className="text-4xl font-serif italic text-white tracking-tight">Maintenance Dashboard</h2>
-            <p className="text-slate-400 max-w-sm text-sm">Upload data vibrasi untuk mengaktifkan analisis prediktif eksponensial.</p>
+            <h2 className="text-4xl font-serif italic text-white tracking-tight">{ctx.tabs.rul} Dashboard</h2>
+            <p className="text-slate-400 max-w-sm text-sm">{ctx.dashboard.emptyState}</p>
           </div>
         ) : (
           <>
             {/* Header / Nav */}
             <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-2">
               <div>
-                <h2 className="text-4xl font-serif text-white mb-2">Analysis Dashboard</h2>
+                <h2 className="text-4xl font-serif text-white mb-2">{ctx.dashboard.title}</h2>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                  <p className="text-slate-500 text-sm">Predictive reporting for <span className="text-accent-teal font-bold">Bearing {pointPrefix}</span></p>
+                  <p className="text-slate-500 text-sm">{ctx.dashboard.reportingFor} <span className="text-accent-teal font-bold">Bearing {pointPrefix}</span></p>
                   <div className="hidden sm:block h-4 w-px bg-slate-800" />
                   <div className="flex items-center gap-2 px-3 py-1 bg-slate-900 border border-slate-800 rounded-full">
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Last Update:</span>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{ctx.dashboard.lastUpdate}:</span>
                     <span className="text-[10px] font-mono text-teal-400 font-bold">
                       {format(processedData[processedData.length - 1].Datetime, 'dd MMM yyyy, HH:mm')}
                     </span>
@@ -440,10 +459,10 @@ export default function App() {
 
               <nav className="flex border-b border-slate-800 w-full md:w-auto">
                 {[
-                  { id: 'dashboard', label: 'RUL Prediction', icon: TrendingUp },
-                  { id: 'overview', label: 'Data Overview', icon: History },
-                  { id: 'analysis', label: 'AI Insights', icon: Brain },
-                  { id: 'methodology', label: 'Metodologi', icon: BookOpen }
+                  { id: 'dashboard', label: ctx.tabs.rul, icon: TrendingUp },
+                  { id: 'overview', label: ctx.tabs.overview, icon: History },
+                  { id: 'analysis', label: ctx.tabs.insights, icon: Brain },
+                  { id: 'methodology', label: ctx.tabs.methodology, icon: BookOpen }
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -476,13 +495,13 @@ export default function App() {
                 >
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="bg-slate-900/50 p-7 rounded-2xl border border-slate-800 shadow-sm">
-                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-6 font-mono">Statistical Insight</h3>
+                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-6 font-mono">{ctx.overview.statisticalInsight}</h3>
                       <div className="grid grid-cols-2 gap-4">
                         {[
-                          { label: 'Samples Collected', value: processedData.length },
-                          { label: 'Model Stability', value: `${(results?.stabilityIndex || 0 * 100).toFixed(1)}%` },
-                          { label: 'Baseline level', value: `${Math.min(...processedData.map(d => d.Level)).toFixed(2)} mm/s` },
-                          { label: 'Current HI', value: `${processedData[processedData.length - 1].compositeHI.toFixed(2)}` }
+                          { label: ctx.overview.samplesCollected, value: processedData.length },
+                          { label: ctx.overview.modelStability, value: `${(results?.stabilityIndex || 0 * 100).toFixed(1)}%` },
+                          { label: ctx.overview.baselineLevel, value: `${Math.min(...processedData.map(d => d.Level)).toFixed(2)} mm/s` },
+                          { label: ctx.overview.currentHI, value: `${processedData[processedData.length - 1].compositeHI.toFixed(2)}` }
                         ].map(stat => (
                           <div key={stat.label} className="p-5 bg-card-bg rounded-xl border border-slate-800/50">
                             <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{stat.label}</p>
@@ -493,14 +512,14 @@ export default function App() {
                     </div>
 
                     <div className="bg-slate-900/50 p-7 rounded-2xl border border-slate-800 shadow-sm">
-                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-6 font-mono">Real-time Stream</h3>
+                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-6 font-mono">{ctx.overview.realTimeStream}</h3>
                       <div className="max-h-[300px] overflow-auto pr-2">
                         <table className="w-full text-left text-xs">
                           <thead className="sticky top-0 bg-slate-900 shadow-sm">
                             <tr className="border-b border-slate-800 text-[9px] font-bold uppercase font-mono text-slate-500">
-                              <th className="py-2 pr-4">Point</th>
-                              <th className="py-2 pr-4">Timestamp</th>
-                              <th className="py-2 pr-4 text-right">Level</th>
+                              <th className="py-2 pr-4">{ctx.overview.point}</th>
+                              <th className="py-2 pr-4">{ctx.overview.timestamp}</th>
+                              <th className="py-2 pr-4 text-right">{ctx.overview.level}</th>
                             </tr>
                           </thead>
                           <tbody className="font-mono divide-y divide-slate-800">
@@ -517,7 +536,7 @@ export default function App() {
                     </div>
 
                     <div className="bg-slate-900/50 p-7 rounded-2xl border border-slate-800 shadow-sm lg:col-span-2">
-                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-6 font-mono">Input Feature Layer (RMS, Kurtosis, Env RMS)</h3>
+                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-6 font-mono">{ctx.overview.inputFeatureLayer}</h3>
                       <div className="h-[250px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={processedData}>
@@ -546,7 +565,7 @@ export default function App() {
                   {/* Top Metrics */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-800 shadow-xl overflow-hidden relative group">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Operational Risk</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{ctx.dashboard.risk}</p>
                       <div className="flex flex-wrap items-center gap-2">
                         <div className={cn(
                           "px-3 py-1 rounded-full text-[10px] font-bold font-mono tracking-widest uppercase",
@@ -555,7 +574,7 @@ export default function App() {
                           results.riskLevel === 'MEDIUM' ? "bg-yellow-500/20 text-yellow-500" : 
                           "bg-teal-500/20 text-teal-400"
                         )}>
-                          {results.riskLevel}
+                          {(ctx.dashboard as any).riskLevels[results.riskLevel]}
                         </div>
                         <div className={cn(
                           "px-2 py-1 rounded-md text-[9px] font-bold uppercase flex items-center gap-1",
@@ -564,14 +583,14 @@ export default function App() {
                           results.trendDirection === 'Fluctuating' ? "bg-purple-500/10 text-purple-400" :
                           "bg-slate-500/10 text-slate-400"
                         )}>
-                          {results.trendDirection === 'Accelerating' ? '↑↑' : results.trendDirection === 'Stable Growth' ? '↑' : results.trendDirection === 'Fluctuating' ? '~' : '→'} {results.trendDirection}
+                          {results.trendDirection === 'Accelerating' ? '↑↑' : results.trendDirection === 'Stable Growth' ? '↑' : results.trendDirection === 'Fluctuating' ? '~' : '→'} {(ctx.dashboard as any).trends[results.trendDirection]}
                         </div>
                       </div>
                       <div className="mt-3 flex flex-col gap-1">
                         <p className="text-[10px] font-medium text-slate-300">
-                          {results.status} Status
+                          {(ctx.dashboard as any).healthStatus[results.status]} Status
                         </p>
-                        <p className="text-[9px] text-slate-500 italic uppercase tracking-tighter">Stability: {(results.stabilityIndex * 100).toFixed(0)}%</p>
+                        <p className="text-[9px] text-slate-500 italic uppercase tracking-tighter">{ctx.dashboard.stability}: {(results.stabilityIndex * 100).toFixed(0)}%</p>
                       </div>
                     </div>
                     
@@ -580,7 +599,7 @@ export default function App() {
                         "absolute right-0 top-0 h-full w-1 opacity-50 transition-all group-hover:w-2",
                         results.confidenceScore > 80 ? "bg-teal-500" : (results.confidenceScore > 60 ? "bg-amber-500" : "bg-red-500")
                       )}></div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Confidence Score</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{ctx.dashboard.confidence}</p>
                       <div className="flex items-baseline gap-2">
                         <p className={cn(
                           "text-2xl font-bold font-mono tracking-tighter uppercase leading-none",
@@ -588,7 +607,7 @@ export default function App() {
                         )}>
                           {results.confidenceScore}%
                         </p>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Probabilistic</span>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{ctx.dashboard.probabilistic}</span>
                       </div>
                       <div className="mt-2 flex flex-col gap-1">
                         <p className="text-[9px] text-slate-400 font-medium leading-tight">
@@ -602,20 +621,20 @@ export default function App() {
                     </div>
 
                     <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Uncertainty Estimation</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{ctx.dashboard.uncertainty}</p>
                       <div className="flex flex-col gap-2">
                         {results.confidenceInterval ? (
                           <div className="flex items-center gap-2">
                             <p className="text-xl font-bold font-mono text-white leading-none">
                               &plusmn; {( (results.confidenceInterval[1] - results.confidenceInterval[0]) / 2).toFixed(1)}
                             </p>
-                            <span className="text-[9px] font-mono text-slate-500 uppercase">Days Range</span>
+                            <span className="text-[9px] font-mono text-slate-500 uppercase">{ctx.dashboard.daysRange}</span>
                           </div>
                         ) : (
-                          <p className="text-sm font-mono text-slate-500">N/A (LDR Mode)</p>
+                          <p className="text-sm font-mono text-slate-500">N/A ({results.mode} Mode)</p>
                         )}
                         <div className="pt-2 border-t border-slate-800/50">
-                          <p className="text-[9px] font-bold text-slate-500 uppercase">Prognostic Horizon</p>
+                          <p className="text-[9px] font-bold text-slate-500 uppercase">{ctx.dashboard.prognosticHorizon}</p>
                           <p className="text-sm font-bold font-mono text-accent-teal leading-none mt-1">
                             {results.phScore.toFixed(2)} Index
                           </p>
@@ -624,24 +643,24 @@ export default function App() {
                     </div>
 
                     <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">RUL Prediction</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{ctx.dashboard.rul}</p>
                       <div className="flex flex-col gap-3">
                         <div className="flex flex-col">
-                          <p className="text-[9px] text-slate-500 font-bold tracking-wider">Estimated Failure</p>
+                          <p className="text-[9px] text-slate-500 font-bold tracking-wider">{ctx.dashboard.estimatedFailure}</p>
                           <p className={cn(
                             "text-lg font-bold font-mono leading-none",
                             results.mode === 'LDR' ? "text-teal-400/30" : "text-amber-500"
                           )}>
-                            {results.mode === 'LDR' ? "OPERATIONAL SAFE" : format(results.failureDate, 'dd MMM yyyy')}
+                            {results.mode === 'LDR' ? ctx.dashboard.operationalSafe : format(results.failureDate, 'dd MMM yyyy')}
                           </p>
                         </div>
                         <div className="pt-2 border-t border-slate-800">
-                          <p className="text-[9px] font-bold text-slate-500 uppercase">Sisa Umur (RUL)</p>
+                          <p className="text-[9px] font-bold text-slate-500 uppercase">{ctx.dashboard.remainingLife}</p>
                           <p className={cn(
                             "text-2xl font-bold font-mono tracking-tighter leading-none mt-1",
                             results.mode === 'LDR' ? "text-teal-400" : (results.status === 'Danger' ? "text-red-500" : "text-white")
                           )}>
-                            {results.mode === 'LDR' ? "> 3 THN" : (
+                            {results.mode === 'LDR' ? `> 3 ${ctx.dashboard.days === 'Hari' ? 'THN' : 'YRS'}` : (
                               <span>
                                 {results.rulDays.toFixed(1)} <span className="text-xs">&plusmn; {((results.confidenceInterval![1] - results.confidenceInterval![0]) / 2).toFixed(0)}</span>
                               </span>
@@ -660,18 +679,18 @@ export default function App() {
                         <div className="flex items-center gap-3">
                            <div className="h-8 w-1 bg-accent-teal rounded-full" />
                            <div>
-                            <h3 className="font-bold text-xl text-white tracking-tight">Exponential Degradation Curve</h3>
+                            <h3 className="font-bold text-xl text-white tracking-tight">{ctx.dashboard.curveTitle}</h3>
                             <p className="text-[11px] text-slate-500 font-mono mt-1">LOG_FIT_SCALING: mm/s vs TIMESTAMP</p>
                            </div>
                         </div>
                         <div className="flex gap-4">
                           <div className="flex items-center gap-2">
                             <div className="h-2 w-4 bg-accent-teal rounded-full" />
-                            <span className="text-[10px] font-bold text-slate-500 uppercase">Smoothed</span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">{ctx.dashboard.smoothed}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="h-2 w-4 bg-red-500 rounded-full" />
-                            <span className="text-[10px] font-bold text-slate-500 uppercase">Limit</span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">{ctx.dashboard.limit}</span>
                           </div>
                         </div>
                       </div>
@@ -699,12 +718,12 @@ export default function App() {
                             />
                             <Line type="monotone" dataKey="Level" stroke="#64748B" strokeWidth={1} strokeOpacity={0.3} dot={{ r: 2, fill: '#64748B' }} name="Raw Level" />
                             <Line type="monotone" dataKey="compositeHI" stroke="#2DD4BF" strokeWidth={4} dot={false} name="Composite HI" />
-                            <ReferenceLine y={threshold} stroke="#EF4444" strokeDasharray="8 8" strokeWidth={2} label={{ value: `FAILURE ${threshold.toFixed(1)}`, position: 'insideTopRight', fill: '#EF4444', fontSize: 10, fontWeight: 'bold' }} />
+                            <ReferenceLine y={threshold} stroke="#EF4444" strokeDasharray="8 8" strokeWidth={2} label={{ value: `${ctx.dashboard.failure} ${threshold.toFixed(1)}`, position: 'insideTopRight', fill: '#EF4444', fontSize: 10, fontWeight: 'bold' }} />
                             {results && results.fptThreshold && (
-                              <ReferenceLine y={results.fptThreshold} stroke="#64748B" strokeDasharray="4 4" label={{ value: 'FPT LIMIT', position: 'insideLeft', fill: '#64748B', fontSize: 8 }} />
+                              <ReferenceLine y={results.fptThreshold} stroke="#64748B" strokeDasharray="4 4" label={{ value: ctx.dashboard.fptLimit, position: 'insideLeft', fill: '#64748B', fontSize: 8 }} />
                             )}
                             {results && results.fptIndex !== null && processedData[results.fptIndex] && (
-                              <ReferenceLine x={processedData[results.fptIndex].Datetime.getTime()} stroke="#FBBF24" strokeWidth={2} label={{ value: 'FPT DETECTION', position: 'insideBottomLeft', fill: '#FBBF24', fontSize: 9, fontWeight: 'bold', angle: 0 }} />
+                              <ReferenceLine x={processedData[results.fptIndex].Datetime.getTime()} stroke="#FBBF24" strokeWidth={2} label={{ value: ctx.dashboard.fptDetection, position: 'insideBottomLeft', fill: '#FBBF24', fontSize: 9, fontWeight: 'bold', angle: 0 }} />
                             )}
                           </LineChart>
                         </ResponsiveContainer>
@@ -714,7 +733,7 @@ export default function App() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                        <div className="bg-card-bg p-8 rounded-3xl border border-slate-800 shadow-xl">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-8 flex items-center gap-2">
-                          <AlertTriangle size={14} className="text-amber-500" /> Model Accuracy Breakdown
+                          <AlertTriangle size={14} className="text-amber-500" /> {ctx.dashboard.accuracyBreakdown}
                         </h3>
                         <div className="h-[250px]">
                           <ResponsiveContainer width="100%" height="100%">
@@ -723,8 +742,8 @@ export default function App() {
                               <XAxis dataKey="Datetime" tickFormatter={(val) => format(val, 'dd/MM')} tick={{ fontSize: 9, fill: '#64748B' }} />
                               <YAxis tick={{ fontSize: 9, fill: '#64748B' }} />
                               <Tooltip contentStyle={{ backgroundColor: '#0A0C10', borderColor: '#1E293B' }} />
-                              <Line type="monotone" dataKey="SmoothedLevel" stroke="#CBD5E1" strokeWidth={2} dot={false} name="Actual HI" />
-                              <Line type="monotone" dataKey="pred" stroke="#F43F5E" strokeDasharray="5 5" strokeWidth={2} dot={false} name="Predicted HI" />
+                              <Line type="monotone" dataKey="SmoothedLevel" stroke="#CBD5E1" strokeWidth={2} dot={false} name={ctx.dashboard.actualHI} />
+                              <Line type="monotone" dataKey="pred" stroke="#F43F5E" strokeDasharray="5 5" strokeWidth={2} dot={false} name={ctx.dashboard.predictedHI} />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
@@ -732,13 +751,13 @@ export default function App() {
 
                       <div className="bg-card-bg p-8 rounded-3xl border border-slate-800 shadow-xl">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-8 flex items-center gap-2">
-                          <TrendingUp size={14} className="text-accent-teal" /> Degradation Path Projection
+                          <TrendingUp size={14} className="text-accent-teal" /> {ctx.dashboard.degradationPath}
                         </h3>
                         <div className="h-[250px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={expData}>
                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1E293B" />
-                              <XAxis dataKey="days" label={{ value: 't + Days', position: 'insideBottom', offset: -5, fontSize: 9, fill: '#64748B' }} tick={{ fontSize: 9, fill: '#64748B' }} />
+                              <XAxis dataKey="days" label={{ value: `t + ${ctx.dashboard.days}`, position: 'insideBottom', offset: -5, fontSize: 9, fill: '#64748B' }} tick={{ fontSize: 9, fill: '#64748B' }} />
                               <YAxis tick={{ fontSize: 9, fill: '#64748B' }} />
                               <Tooltip contentStyle={{ backgroundColor: '#0A0C10', borderColor: '#1E293B' }} />
                               <Line type="monotone" dataKey="value" stroke="#2DD4BF" strokeWidth={3} dot={false} name="Degradation Path" />
@@ -764,9 +783,9 @@ export default function App() {
                       <Brain className="text-accent-teal h-14 w-14" />
                       <div className="absolute inset-0 bg-accent-teal/20 blur-2xl -z-10 rounded-full" />
                     </div>
-                    <h2 className="text-3xl font-serif text-white mb-3">AI Maintenance Advisory</h2>
+                    <h2 className="text-3xl font-serif text-white mb-3">{ctx.aiInsights.advisory}</h2>
                     <p className="text-slate-400 max-w-lg mb-10 text-sm leading-relaxed">
-                      Laporan kecerdasan buatan menyintesis data degradasi menjadi instruksi teknis yang dapat ditindaklanjuti bagi tim pemeliharaan preventif.
+                      {ctx.aiInsights.description}
                     </p>
                     
                     <button 
@@ -778,9 +797,9 @@ export default function App() {
                       )}
                     >
                       {isGeneratingAi ? (
-                        <>Analyzing Neural Path <motion.span animate={{ opacity: [1, 0, 1] }} transition={{ repeat: Infinity, duration: 1 }}>...</motion.span></>
+                        <>{ctx.aiInsights.generating} <motion.span animate={{ opacity: [1, 0, 1] }} transition={{ repeat: Infinity, duration: 1 }}>...</motion.span></>
                       ) : (
-                        <>Generate Technical Insight <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" /></>
+                        <>{ctx.aiInsights.generateButton} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" /></>
                       )}
                     </button>
                   </div>
@@ -798,8 +817,8 @@ export default function App() {
                         <div className="flex items-start gap-6">
                           <div className="h-16 w-1 bg-accent-teal rounded-full" />
                           <div>
-                            <h3 className="text-2xl font-serif italic text-white mb-1">Expert Maintenance Recommendation</h3>
-                            <p className="text-[10px] font-mono font-bold tracking-[0.3em] text-slate-500 uppercase">Automated Report Module — Secure Link Active</p>
+                            <h3 className="text-2xl font-serif italic text-white mb-1">{ctx.aiInsights.expertRec}</h3>
+                            <p className="text-[10px] font-mono font-bold tracking-[0.3em] text-slate-500 uppercase">{ctx.aiInsights.automatedReport}</p>
                           </div>
                         </div>
                         
@@ -816,11 +835,11 @@ export default function App() {
                           {isExporting ? (
                             <div className="flex items-center gap-2">
                               <div className="h-3 w-3 border-2 border-accent-teal border-t-transparent rounded-full animate-spin" />
-                              Processing...
+                              {ctx.aiInsights.processing}
                             </div>
                           ) : (
                             <>
-                              <Download size={14} className="text-accent-teal" /> Download PDF
+                              <Download size={14} className="text-accent-teal" /> {ctx.aiInsights.downloadPdf}
                             </>
                           )}
                         </button>
@@ -848,10 +867,10 @@ export default function App() {
                       </div>
                       
                       <div className="mt-12 pt-8 border-t border-slate-800 flex justify-between items-center text-[10px] font-mono text-slate-600 uppercase tracking-widest">
-                        <span>Report ID: {Math.random().toString(36).substring(7).toUpperCase()}</span>
+                        <span>{ctx.aiInsights.reportId}: {Math.random().toString(36).substring(7).toUpperCase()}</span>
                         <div className="flex items-center gap-2">
                            <CheckCircle2 size={12} className="text-accent-teal" />
-                           <span>Verifikasi Algoritma Selesai</span>
+                           <span>{ctx.aiInsights.verificationDone}</span>
                         </div>
                       </div>
                     </motion.div>
@@ -867,9 +886,9 @@ export default function App() {
                 >
                   {/* Header Metodologi */}
                   <div className="text-center space-y-4">
-                    <h2 className="text-4xl font-serif text-white tracking-tight">Metodologi Sistem AI Prognostics</h2>
+                    <h2 className="text-4xl font-serif text-white tracking-tight">{ctx.methodology.title}</h2>
                     <p className="text-slate-400 max-w-2xl mx-auto italic">
-                      Kombinasi Physics-Aware Prognostics, Analisis Statistik, dan Machine Learning Adaptif untuk Predictive Maintenance Bearing.
+                      {ctx.methodology.description}
                     </p>
                   </div>
 
@@ -878,17 +897,17 @@ export default function App() {
                     <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 space-y-4">
                       <h3 className="text-xl font-serif text-white flex items-center gap-3">
                         <div className="bg-red-500/10 p-2 rounded-lg"><AlertTriangle className="text-red-400" size={18} /></div>
-                        Problem Statement
+                        {ctx.methodology.problem}
                       </h3>
                       <div className="space-y-3 text-sm text-slate-400 leading-relaxed">
                         <p>
-                          Kerusakan bearing merupakan salah satu penyebab utama downtime pada rotating machinery industri. Pendekatan monitoring konvensional berbasis threshold statis sering kali gagal mendeteksi degradasi dini dan tidak mampu memberikan estimasi waktu kegagalan yang adaptif.
+                          {lang === 'id' ? "Kerusakan bearing merupakan salah satu penyebab utama downtime pada rotating machinery industri. Pendekatan monitoring konvensional berbasis threshold statis sering kali gagal mendeteksi degradasi dini dan tidak mampu memberikan estimasi waktu kegagalan yang adaptif." : "Bearing failure is one of the main causes of downtime in industrial rotating machinery. Conventional monitoring approaches based on static thresholds often fail to detect early degradation and are unable to provide adaptive failure time estimates."}
                         </p>
                         <p>
-                          Selain itu, kondisi operasional industri yang penuh noise dan variasi load menyebabkan prediksi berbasis regresi tunggal menjadi tidak stabil dan kurang realistis.
+                          {lang === 'id' ? "Selain itu, kondisi operasional industri yang penuh noise dan variasi load menyebabkan prediksi berbasis regresi tunggal menjadi tidak stabil dan kurang realistis." : "Furthermore, industrial operating conditions filled with noise and load variations cause single regression-based predictions to be unstable and unrealistic."}
                         </p>
                         <p className="text-slate-300 font-medium pt-2">
-                          Oleh karena itu, dikembangkan sistem AI Prognostics berbasis Physics-Aware Hybrid Degradation Modeling untuk menghasilkan prediksi RUL yang lebih stabil dan explainable.
+                          {lang === 'id' ? "Oleh karena itu, dikembangkan sistem AI Prognostics berbasis Physics-Aware Hybrid Degradation Modeling untuk menghasilkan prediksi RUL yang lebih stabil dan explainable." : "Therefore, an AI Prognostics system based on Physics-Aware Hybrid Degradation Modeling was developed to produce more stable and explainable RUL predictions."}
                         </p>
                       </div>
                     </div>
@@ -896,16 +915,22 @@ export default function App() {
                     <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 space-y-4">
                       <h3 className="text-xl font-serif text-white flex items-center gap-3">
                         <div className="bg-accent-teal/10 p-2 rounded-lg"><CheckCircle2 className="text-accent-teal" size={18} /></div>
-                        Tujuan Pengembangan Sistem
+                        {ctx.methodology.goals}
                       </h3>
                       <ul className="space-y-2">
-                        {[
+                        {(lang === 'id' ? [
                           "Mendeteksi degradasi bearing sejak tahap awal",
                           "Mengurangi downtime tidak terencana",
                           "Menghasilkan estimasi RUL yang stabil dan explainable",
                           "Meningkatkan reliability maintenance berbasis kondisi aktual",
                           "Mengurangi false alarm akibat noise operasional industri"
-                        ].map((goal, i) => (
+                        ] : [
+                          "Detect bearing degradation from the early stages",
+                          "Reduce unplanned downtime",
+                          "Produce stable and explainable RUL estimates",
+                          "Increase reliability of condition-based maintenance",
+                          "Reduce false alarms due to industrial operational noise"
+                        ]).map((goal, i) => (
                           <li key={i} className="flex items-center gap-3 text-sm text-slate-400">
                             <div className="h-1 w-1 rounded-full bg-accent-teal" />
                             {goal}
@@ -917,16 +942,22 @@ export default function App() {
                     <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 space-y-4 md:col-span-2">
                       <h3 className="text-xl font-serif text-white flex items-center gap-3">
                         <div className="bg-accent-teal/10 p-2 rounded-lg"><Brain className="text-accent-teal" size={18} /></div>
-                        Kontribusi Utama
+                        {ctx.methodology.contribution}
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {[
+                        {(lang === 'id' ? [
                           "Mengembangkan hybrid degradation engine berbasis adaptive switching LDR/HDR",
                           "Mengintegrasikan probabilistic RUL estimation dengan confidence scoring",
                           "Menggunakan adaptive baseline learning untuk meningkatkan robustness antar mesin",
                           "Mengurangi instability prediction menggunakan hysteresis state control",
                           "Mengimplementasikan explainable prognostics untuk maintenance decision support"
-                        ].map((item, i) => (
+                        ] : [
+                          "Developed a hybrid degradation engine based on LDR/HDR adaptive switching",
+                          "Integrated probabilistic RUL estimation with confidence scoring",
+                          "Used adaptive baseline learning to improve robustness between machines",
+                          "Reduced prediction instability using hysteresis state control",
+                          "Implemented explainable prognostics for maintenance decision support"
+                        ]).map((item, i) => (
                           <div key={i} className="flex items-start gap-3 text-sm text-slate-400">
                             <div className="h-1 w-1 rounded-full bg-accent-teal mt-2 shrink-0" />
                             <p>{item}</p>
@@ -940,21 +971,21 @@ export default function App() {
                   <div className="bg-slate-900/50 p-10 rounded-3xl border border-slate-800 space-y-6">
                     <h3 className="text-2xl font-serif text-white flex items-center gap-3">
                       <div className="bg-accent-teal/10 p-2 rounded-lg"><Activity className="text-accent-teal" size={20} /></div>
-                      Pendekatan Umum Sistem
+                      {ctx.methodology.approach}
                     </h3>
                     <div className="space-y-4 text-slate-300 leading-relaxed">
                       <p>
-                        Sistem ini dirancang menggunakan pendekatan <strong>Physics-Aware Prognostics</strong>, yaitu kombinasi antara analisis statistik, pemodelan degradasi mekanis, dan machine learning adaptif untuk memprediksi <strong>Remaining Useful Life (RUL)</strong> bearing secara real-time.
+                        {ctx.methodology.approachDesc1}
                       </p>
                       <p>
-                        Berbeda dengan sistem monitoring konvensional yang hanya menggunakan alarm threshold statis, sistem ini memahami siklus degradasi bearing secara dinamis melalui deteksi perubahan pola vibrasi dan analisis percepatan kerusakan.
+                        {ctx.methodology.approachDesc2}
                       </p>
                     </div>
                   </div>
 
                   {/* Arsitektur Visual (Detailed) */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {[
+                    {(lang === 'id' ? [
                       { title: "Sensor Vibrasi & Data Operasional", desc: "Akuisisi data kontinu mm/s dari titik sensor horizontal, vertikal, dan axial." },
                       { title: "Advanced Feature Extraction (RMS, Kurtosis, Env)", desc: "Transformasi sinyal mentah menjadi fitur sensitif terhadap degradasi mekanis awal." },
                       { title: "Composite Health Indicator (HI)", desc: "Fusi multi-fitur menjadi representasi kondisi kesehatan tunggal yang robust." },
@@ -964,7 +995,17 @@ export default function App() {
                       { title: "Hybrid State Classification (LDR/HDR)", desc: "Klasifikasi fase degradasi rendah (Linear) vs akselerasi tinggi (Eksponensial)." },
                       { title: "Adaptive Model Switching", desc: "Otomatisasi pemilihan algoritma sesuai dengan lintasan degradasi yang terdeteksi." },
                       { title: "Probabilistic RUL Estimation", desc: "Estimasi sisa umur dengan rentang ketidakpastian (confidence interval) yang realistis." }
-                    ].map((step, i) => (
+                    ] : [
+                      { title: "Vibration Sensors & Operational Data", desc: "Continuous acquisition of mm/s data from horizontal, vertical, and axial sensor points." },
+                      { title: "Advanced Feature Extraction (RMS, Kurtosis, Env)", desc: "Signal transformation into features sensitive to early mechanical degradation." },
+                      { title: "Composite Health Indicator (HI)", desc: "Fusion of multi-features into a single robust health condition representation." },
+                      { title: "EWMA & Kalman Filtering", desc: "Sensor noise reduction and trend stabilization using adaptive statistical smoothing." },
+                      { title: "Adaptive Baseline Learning", desc: "The system learns the unique 'healthy' state of each machine as a dynamic reference." },
+                      { title: "FPT Detection Engine (Z-Score + Slope)", desc: "Detects First Predicting Time through persistence of statistical anomalies." },
+                      { title: "Hybrid State Classification (LDR/HDR)", desc: "Classification of Low Degradation Rate (Linear) vs High Degradation Rate (Exponential)." },
+                      { title: "Adaptive Model Switching", desc: "Automation of algorithm selection according to detected degradation trajectory." },
+                      { title: "Probabilistic RUL Estimation", desc: "Estimation of remaining life with realistic uncertainty ranges (confidence interval)." }
+                    ]).map((step, i) => (
                       <div key={i} className="bg-slate-800/20 p-5 rounded-2xl border border-slate-700/50 flex flex-col gap-2 hover:bg-slate-800/40 transition-colors">
                         <div className="flex items-center gap-3">
                           <span className="text-xs font-mono text-accent-teal/50 font-bold">{i+1}.</span>
@@ -981,23 +1022,23 @@ export default function App() {
                       <Brain size={200} className="text-accent-teal" />
                     </div>
                     <div className="text-center space-y-2 relative">
-                      <h3 className="text-xl font-serif text-white">Architecture Flow: AI Prognostics Engine</h3>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em]">End-to-End Predictive Pipeline</p>
+                      <h3 className="text-xl font-serif text-white">{ctx.methodology.architecture}</h3>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em]">{ctx.methodology.endToEnd}</p>
                     </div>
 
                     <div className="flex flex-wrap justify-center items-center gap-4 relative">
                       {[
-                        { label: "Sensor Acquisition", icon: <Activity size={14} /> },
-                        { label: "Signal Processing (EWMA+Kalman)", icon: <Settings size={14} /> },
-                        { label: "Feature Extraction", icon: <BarChart3 size={14} /> },
-                        { label: "Composite Health Indicator", icon: <TrendingUp size={14} /> },
-                        { label: "Adaptive Baseline Learning", icon: <Settings size={14} /> },
-                        { label: "FPT Detection Engine", icon: <TrendingUp size={14} /> },
-                        { label: "State Classification (LDR/HDR)", icon: <Settings size={14} /> },
-                        { label: "Adaptive Model Switching", icon: <Brain size={14} /> },
-                        { label: "Probabilistic RUL Prediction", icon: <AlertTriangle size={14} /> },
-                        { label: "Confidence & Risk Evaluation", icon: <CheckCircle2 size={14} /> },
-                        { label: "Maintenance Decision Support", icon: <History size={14} /> },
+                        { label: lang === 'id' ? "Akuisisi Sensor" : "Sensor Acquisition", icon: <Activity size={14} /> },
+                        { label: lang === 'id' ? "Sinyal Processing (EWMA+Kalman)" : "Signal Processing (EWMA+Kalman)", icon: <Settings size={14} /> },
+                        { label: lang === 'id' ? "Ekstraksi Fitur" : "Feature Extraction", icon: <BarChart3 size={14} /> },
+                        { label: lang === 'id' ? "Composite Health Indicator" : "Composite Health Indicator", icon: <TrendingUp size={14} /> },
+                        { label: lang === 'id' ? "Adaptive Baseline Learning" : "Adaptive Baseline Learning", icon: <Settings size={14} /> },
+                        { label: lang === 'id' ? "FPT Detection Engine" : "FPT Detection Engine", icon: <TrendingUp size={14} /> },
+                        { label: lang === 'id' ? "State Classification (LDR/HDR)" : "State Classification (LDR/HDR)", icon: <Settings size={14} /> },
+                        { label: lang === 'id' ? "Adaptive Model Switching" : "Adaptive Model Switching", icon: <Brain size={14} /> },
+                        { label: lang === 'id' ? "Probabilistic RUL Prediction" : "Probabilistic RUL Prediction", icon: <AlertTriangle size={14} /> },
+                        { label: lang === 'id' ? "Evaluasi Risiko & Keyakinan" : "Confidence & Risk Evaluation", icon: <CheckCircle2 size={14} /> },
+                        { label: lang === 'id' ? "Support Keputusan Maintenance" : "Maintenance Decision Support", icon: <History size={14} /> },
                       ].map((node, i, arr) => (
                         <React.Fragment key={i}>
                           <div className="flex flex-col items-center gap-2">
@@ -1018,15 +1059,10 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 space-y-6">
                       <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2 flex items-center gap-3">
-                        <TrendingUp className="text-accent-teal" size={18} /> Keunggulan Inovasi Sistem
+                        <TrendingUp className="text-accent-teal" size={18} /> {ctx.methodology.innovation}
                       </h3>
                       <ul className="space-y-4">
-                        {[
-                          { title: "Adaptive Physics-Aware", desc: "Model memahami lifecycle degradasi bearing secara dinamis, bukan sekadar threshold statis." },
-                          { title: "Hybrid Two-Stage Modeling", desc: "Menggabungkan model linear dan eksponensial sesuai fase degradasi aktual mesin." },
-                          { title: "Probabilistic RUL Estimation", desc: "Prediksi disertai confidence interval sehingga lebih realistis untuk pengambilan keputusan." },
-                          { title: "Industrial Noise Robustness", desc: "Menggunakan EWMA, Kalman Filtering, dan Hysteresis Control untuk menjaga stabilitas." }
-                        ].map((item, i) => (
+                        {ctx.methodology.innovationPoints.map((item: any, i: number) => (
                           <li key={i} className="flex gap-4">
                             <div className="h-1.5 w-1.5 rounded-full bg-accent-teal mt-2 shrink-0" />
                             <div>
@@ -1041,19 +1077,19 @@ export default function App() {
                     <div className="space-y-6">
                       <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800">
                         <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2 mb-4 flex items-center gap-3">
-                          <Activity className="text-accent-teal" size={18} /> Real-Time Prognostics Capability
+                          <Activity className="text-accent-teal" size={18} /> {ctx.methodology.realTimeCap}
                         </h3>
                         <p className="text-sm text-slate-400 leading-relaxed">
-                          Sistem dirancang untuk melakukan monitoring dan evaluasi degradasi secara kontinu menggunakan data streaming sensor sehingga prediksi dapat diperbarui secara adaptif terhadap perubahan kondisi operasional mesin secara instan.
+                          {ctx.methodology.realTimeDesc}
                         </p>
                       </div>
 
                       <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800">
                         <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2 mb-4 flex items-center gap-3">
-                          <Brain className="text-accent-teal" size={18} /> Explainable AI Prognostics
+                          <Brain className="text-accent-teal" size={18} /> {ctx.methodology.explainable}
                         </h3>
                         <p className="text-sm text-slate-400 leading-relaxed">
-                          Setiap estimasi RUL dilengkapi interpretasi faktor dominan penyebab degradasi (seperti kenaikan RMS atau Kurtosis) sehingga hasil prediksi dapat dipahami engineer dan operator secara transparan tanpa "black-box effect".
+                          {ctx.methodology.explainableDesc}
                         </p>
                       </div>
                     </div>
@@ -1062,19 +1098,19 @@ export default function App() {
                   {/* Potensi Implementasi Section */}
                   <div className="bg-slate-900/50 p-10 rounded-3xl border border-slate-800 space-y-8">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                      <h3 className="text-xl font-serif text-white">Potensi Implementasi Industri</h3>
+                      <h3 className="text-xl font-serif text-white">{ctx.methodology.implementation}</h3>
                       <div className="flex flex-wrap gap-2">
-                        {['Rotating Machinery', 'Pompa Industri', 'Motor Listrik', 'Conveyor', 'Blower'].map((tag) => (
+                        {ctx.methodology.implementationTags.map((tag: string) => (
                           <span key={tag} className="px-2 py-0.5 bg-slate-800 text-[9px] font-bold text-slate-400 uppercase rounded-md border border-slate-700">{tag}</span>
                         ))}
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                       {[
-                        { title: "Downtime Reduction", desc: "Mengurangi downtime tidak terencana akibat kerusakan komponen mendadak." },
-                        { title: "Maintenance Optimization", desc: "Mengoptimalkan jadwal pemeliharaan berdasarkan kondisi nyata (CBM)." },
-                        { title: "Cost Efficiency", desc: "Mengurangi biaya penggantian komponen prematur dan kerugian produksi." },
-                        { title: "Reliability Focus", desc: "Meningkatkan reliability operasional sistem produksi secara keseluruhan." }
+                        { title: ctx.methodology.benefits.downtime, desc: ctx.methodology.benefits.downtimeDesc },
+                        { title: ctx.methodology.benefits.maintenance, desc: ctx.methodology.benefits.maintenanceDesc },
+                        { title: ctx.methodology.benefits.cost, desc: ctx.methodology.benefits.costDesc },
+                        { title: ctx.methodology.benefits.reliability, desc: ctx.methodology.benefits.reliabilityDesc }
                       ].map((benefit, i) => (
                         <div key={i} className="space-y-2">
                           <h4 className="text-xs font-bold text-accent-teal uppercase tracking-widest">{benefit.title}</h4>
@@ -1087,85 +1123,81 @@ export default function App() {
                   {/* Detail Teknis Grid */}
                   <div className="grid grid-cols-1 gap-8">
                     <section className="space-y-6">
-                      <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2">Data Characteristics & Feature Selection</h3>
+                      <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2">{ctx.methodology.characteristics}</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="bg-slate-900/40 p-8 rounded-2xl border border-slate-800 space-y-4">
-                           <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em]">Alasan Pemilihan Feature</h4>
+                           <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em]">{ctx.methodology.reasonFeature}</h4>
                            <p className="text-sm text-slate-400 leading-relaxed">
-                            Kombinasi <strong>RMS, Kurtosis,</strong> dan <strong>Envelope RMS</strong> dipilih karena mampu merepresentasikan energi vibrasi umum, impulsivitas kerusakan mikro, dan frekuensi tinggi akibat kontak elemen bearing. Pendekatan multi-feature ini lebih sensitif terhadap <em>early fault</em> dibanding pemantauan single-feature.
+                            {lang === 'id' ? (
+                              <>Kombinasi <strong>RMS, Kurtosis,</strong> dan <strong>Envelope RMS</strong> dipilih karena mampu merepresentasikan energi vibrasi umum, impulsivitas kerusakan mikro, dan frekuensi tinggi akibat kontak elemen bearing. Pendekatan multi-feature ini lebih sensitif terhadap <em>early fault</em> dibanding pemantauan single-feature.</>
+                            ) : (
+                              <>The combination of <strong>RMS, Kurtosis,</strong> and <strong>Envelope RMS</strong> was chosen because it represents general vibration energy, micro-damage impulsiveness, and high frequencies from bearing element contact. This multi-feature approach is more sensitive to <em>early faults</em> than single-feature monitoring.</>
+                            )}
                            </p>
                         </div>
                         <div className="bg-slate-900/40 p-8 rounded-2xl border border-slate-800 space-y-4">
-                           <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em]">Data Sampling & Quality</h4>
+                           <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em]">{ctx.methodology.sampling}</h4>
                            <p className="text-sm text-slate-400 leading-relaxed">
-                            Data berasal dari sensor vibrasi akselerometer (mm/s) pada sumbu horizontal, vertikal, dan axial. Pengolahan data dilakukan untuk menangkap karakteristik degradasi secara menyeluruh dari fase awal hingga kegagalan kritis.
+                            {lang === 'id' ? "Data berasal dari sensor vibrasi akselerometer (mm/s) pada sumbu horizontal, vertikal, dan axial. Pengolahan data dilakukan untuk menangkap karakteristik degradasi secara menyeluruh dari fase awal hingga kegagalan kritis." : "Data comes from vibration accelerometer sensors (mm/s) on the horizontal, vertical, and axial axes. Data processing is performed to capture comprehensive degradation characteristics from the initial phase to critical failure."}
                            </p>
                         </div>
                       </div>
                     </section>
 
                     <section className="space-y-6">
-                      <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2">Pemilihan dan Proses Data</h3>
+                      <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2">{ctx.methodology.selectionProcess}</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
-                          <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em] mb-4">Filtering Logic</h4>
+                          <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em] mb-4">{ctx.methodology.filteringLogic}</h4>
                           <ul className="space-y-3 text-sm text-slate-400">
-                            <li><strong className="text-slate-200">Outlier Stabilization:</strong> Menstabilkan data abnormal sesaat secara statistik agar tidak memengaruhi tren utama.</li>
-                            <li><strong className="text-slate-200">EWMA Smoothing:</strong> Menggunakan Exponentially Weighted Moving Average agar lebih responsif terhadap perubahan kondisi saat ini.</li>
-                            <li><strong className="text-slate-200">Kalman Filtering:</strong> Meningkatkan kestabilan estimasi health trend dengan meminimalkan noise sensor.</li>
+                            <li><strong className="text-slate-200">{lang === 'id' ? "Outlier Stabilization" : "Outlier Stabilization"}:</strong> {lang === 'id' ? "Menstabilkan data abnormal sesaat secara statistik agar tidak memengaruhi tren utama." : "Statistically stabilizes momentary abnormal data so it doesn't affect the main trend."}</li>
+                            <li><strong className="text-slate-200">{lang === 'id' ? "EWMA Smoothing" : "EWMA Smoothing"}:</strong> {lang === 'id' ? "Menggunakan Exponentially Weighted Moving Average agar lebih responsif terhadap perubahan kondisi saat ini." : "Uses Exponentially Weighted Moving Average to be more responsive to current condition changes."}</li>
+                            <li><strong className="text-slate-200">{lang === 'id' ? "Kalman Filtering" : "Kalman Filtering"}:</strong> {lang === 'id' ? "Meningkatkan kestabilan estimasi health trend dengan meminimalkan noise sensor." : "Increases health trend estimation stability by minimizing sensor noise."}</li>
                           </ul>
                         </div>
                         <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
-                          <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em] mb-4">Feature Layer</h4>
+                          <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em] mb-4">{ctx.methodology.featureLayer}</h4>
                           <ul className="space-y-3 text-sm text-slate-400">
-                            <li><strong className="text-slate-200">RMS (Root Mean Square):</strong> Indikator energi total vibrasi mesin untuk kondisi mekanis umum.</li>
-                            <li><strong className="text-slate-200">Kurtosis:</strong> Mendeteksi impulsivitas akibat benturan mikro (pitting/chipping) pada elemen bearing.</li>
-                            <li><strong className="text-slate-200">Envelope RMS:</strong> Mengisolasi frekuensi tinggi akibat kontak elemen bearing yang mulai terdegradasi.</li>
-                            <li><strong className="text-slate-200">Composite HI:</strong> Penggabungan seluruh fitur menjadi representasi kesehatan yang robust.</li>
+                            <li><strong className="text-slate-200">{lang === 'id' ? "RMS (Root Mean Square)" : "RMS (Root Mean Square)"}:</strong> {lang === 'id' ? "Indikator energi total vibrasi mesin untuk kondisi mekanis umum." : "Indicator of total machine vibration energy for general mechanical condition."}</li>
+                            <li><strong className="text-slate-200">Kurtosis:</strong> {lang === 'id' ? "Mendeteksi impulsivitas akibat benturan mikro (pitting/chipping) pada elemen bearing." : "Detects impulsivity due to micro-impacts (pitting/chipping) on bearing elements."}</li>
+                            <li><strong className="text-slate-200">Envelope RMS:</strong> {lang === 'id' ? "Mengisolasi frekuensi tinggi akibat kontak elemen bearing yang mulai terdegradasi." : "Isolates high frequencies due to bearing element contact that is beginning to degrade."}</li>
+                            <li><strong className="text-slate-200">Composite HI:</strong> {lang === 'id' ? "Penggabungan seluruh fitur menjadi representasi kesehatan yang robust." : "Combines all features into a robust health representation."}</li>
                           </ul>
                         </div>
                       </div>
                     </section>
 
                     <section className="space-y-6">
-                      <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2">Modeling & Prognostics</h3>
+                      <h3 className="text-xl font-serif text-white border-b border-slate-800 pb-2">{ctx.methodology.modelingPrognostic}</h3>
                       <div className="space-y-6">
                         <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
-                          <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em] mb-4">Hybrid Piecewise Degradation Modeling</h4>
+                          <h4 className="text-accent-teal font-bold text-xs uppercase tracking-[0.2em] mb-4">{ctx.methodology.hybridSection}</h4>
                           <p className="text-sm text-slate-400 leading-relaxed mb-4">
-                            Sistem menggunakan pendekatan dua tahap (Two-Stage Degradation Model) yang menyesuaikan algoritma dengan fase degradasi bearing:
+                            {ctx.methodology.hybridDesc}
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="p-4 bg-slate-800/40 rounded-xl">
-                              <h5 className="text-white text-xs font-bold uppercase mb-2">LDR (Low Degradation Rate)</h5>
-                              <p className="text-xs text-slate-500">Bearing masih relatif sehat dengan perubahan vibrasi lambat. Menggunakan regresi linear konservatif untuk monitoring stabilitas.</p>
+                              <h5 className="text-white text-xs font-bold uppercase mb-2">{ctx.methodology.ldr}</h5>
+                              <p className="text-xs text-slate-500">{ctx.methodology.ldrDesc}</p>
                             </div>
                             <div className="p-4 bg-slate-800/40 rounded-xl border border-accent-teal/20">
-                              <h5 className="text-accent-teal text-xs font-bold uppercase mb-2">HDR (High Degradation Rate)</h5>
-                              <p className="text-xs text-slate-500">Kerusakan berkembang cepat ke arah non-linear. Sistem menjadi lebih agresif dalam estimasi failure menggunakan model eksponensial.</p>
+                              <h5 className="text-accent-teal text-xs font-bold uppercase mb-2">{ctx.methodology.hdr}</h5>
+                              <p className="text-xs text-slate-500">{ctx.methodology.hdrDesc}</p>
                             </div>
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
-                            <h4 className="text-slate-200 font-bold text-xs uppercase mb-3">Probabilistic RUL</h4>
-                            <p className="text-[11px] text-slate-500 leading-relaxed">
-                              Estimasi tidak deterministik (angka tunggal). Menggunakan confidence interval (95%) yang mempertimbangkan residual varians, variansi data sensor, dan trend stability.
-                            </p>
-                          </div>
-                          <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
-                            <h4 className="text-slate-200 font-bold text-xs uppercase mb-3">Adaptive Baseline</h4>
-                            <p className="text-[11px] text-slate-500 leading-relaxed">
-                              Secara otomatis mempelajari baseline healthy-state tiap mesin (load/RPM unik) melalui rolling statistics agar threshold bersifat adaptif.
-                            </p>
-                          </div>
-                          <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
-                            <h4 className="text-slate-200 font-bold text-xs uppercase mb-3">FPT Detection</h4>
-                            <p className="text-[11px] text-slate-500 leading-relaxed">
-                              Deteksi First Predicting Time menggunakan kombinasi Z-Score statistik, Slope Persistence, dan Hysteresis State Control untuk menghindari false switching.
-                            </p>
-                          </div>
+                           {[
+                             { title: ctx.methodology.probabilisticRul, desc: ctx.methodology.probabilisticDesc },
+                             { title: ctx.methodology.adaptiveBaseline, desc: ctx.methodology.adaptiveBaselineDesc },
+                             { title: ctx.methodology.fptDetection, desc: ctx.methodology.fptDetectionDesc }
+                           ].map((item, i) => (
+                             <div key={i} className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
+                               <h4 className="text-slate-200 font-bold text-xs uppercase mb-3">{item.title}</h4>
+                               <p className="text-[11px] text-slate-500 leading-relaxed">{item.desc}</p>
+                             </div>
+                           ))}
                         </div>
                       </div>
                     </section>
@@ -1175,47 +1207,38 @@ export default function App() {
                   <div className="bg-slate-900/50 p-10 rounded-3xl border border-slate-800 space-y-8">
                     <h3 className="text-xl font-serif text-white flex items-center gap-3">
                       <div className="bg-amber-500/10 p-2 rounded-lg"><Info className="text-amber-400" size={20} /></div>
-                      Glosarium & Metrik Evaluasi
+                      {ctx.methodology.glossary}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-                      {[
-                        { term: 'RMSE (Average Error)', desc: 'Mengukur deviasi rata-rata antara prediksi dan data aktual sebagai indikator presisi fitting model.' },
-                        { term: 'Prediction Stability Index', desc: 'Mengukur konsistensi estimasi RUL terhadap data baru untuk menjaga reliabilitas maintenance planning.' },
-                        { term: 'Residual Drift Analysis', desc: 'Pemantauan perubahan residual error terhadap waktu untuk penyesuaian adaptif model.' },
-                        { term: 'Hysteresis Control', desc: 'Logika durasi minimum anomali untuk memastikan perubahan status mesin permanen, bukan noise transien.' },
-                        { term: 'ISO 10816 / 20816', desc: 'Standar internasional (Vibration Severity) sebagai referensi batas operasional aman.' },
-                        { term: 'Life-Cycle Reset', desc: 'Kemampuan sistem mendeteksi pergantian bearing baru (penurunan vibrasi drastis) untuk memulai siklus prognostik baru.' },
-                      ].map((item, idx) => (
+                      {ctx.methodology.glossaryItems.map((item: any, idx: number) => (
                         <div key={idx} className="space-y-1">
                           <h4 className="text-accent-teal font-mono text-[10px] font-bold uppercase tracking-widest">{item.term}</h4>
                           <p className="text-xs text-slate-500 leading-relaxed">{item.desc}</p>
                         </div>
                       ))}
                     </div>
-                  </div>
-
-                  {/* References & Identity */}
+                      {/* References & Identity */}
                   <div className="pt-12 border-t border-slate-800 space-y-12">
                       <div className="max-w-3xl mx-auto space-y-4">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] text-center">Penutup</h4>
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] text-center">{ctx.methodology.closing.title}</h4>
                         <p className="text-center text-slate-400 text-xs italic leading-relaxed">
-                          "Pendekatan ini menghasilkan sistem predictive maintenance yang tidak hanya mampu memprediksi kegagalan bearing secara adaptif, tetapi juga memahami dinamika degradasi mesin secara lebih realistis melalui kombinasi signal processing, probabilistic prognostics, dan hybrid degradation modeling. Dengan pendekatan physics-aware dan explainable AI, sistem diharapkan mampu meningkatkan reliability operasional, mengurangi downtime tidak terencana, serta mendukung transformasi predictive maintenance berbasis data pada lingkungan industri modern."
+                          "{ctx.methodology.closing.text}"
                         </p>
                       </div>
 
                      <div className="space-y-8">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] text-center mb-8">Daftar Pustaka & Referensi Ilmiah</h4>
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] text-center mb-8">{ctx.methodology.references.title}</h4>
                         
                         <div className="space-y-8 max-w-4xl mx-auto">
                           <div className="space-y-3">
-                            <h5 className="text-[10px] font-bold text-accent-teal uppercase tracking-widest border-l-2 border-accent-teal pl-3">Skripsi & Dokumen Utama</h5>
+                            <h5 className="text-[10px] font-bold text-accent-teal uppercase tracking-widest border-l-2 border-accent-teal pl-3">{ctx.methodology.references.mainDocs}</h5>
                             <p className="text-[11px] text-slate-500 italic leading-relaxed pl-4">
                               Salsabila, L. (2024). Pemodelan Degradasi Berdasarkan Hasil Analisis Vibrasi Untuk Memprediksi Remaining Useful Life Pada Bearing (Skripsi). Program Studi Informatika, Fakultas Teknik, Universitas Mulawarman, Samarinda.
                             </p>
                           </div>
 
                           <div className="space-y-3">
-                            <h5 className="text-[10px] font-bold text-accent-teal uppercase tracking-widest border-l-2 border-accent-teal pl-3">Buku Referensi (Prognostik)</h5>
+                            <h5 className="text-[10px] font-bold text-accent-teal uppercase tracking-widest border-l-2 border-accent-teal pl-3">{ctx.methodology.references.books}</h5>
                             <ul className="text-[11px] text-slate-500 italic leading-relaxed space-y-2 pl-4">
                               <li>Lei, Y. (2016). Intelligent Fault Diagnosis and Remaining Useful Life Prediction of Rotating Machinery. Oxford: Butterworth-Heinemann (Elsevier).</li>
                               <li>Si, X.-S., Zhang, Z.-X., & Hu, C.-H. (2017). Data-Driven Remaining Useful Life Prognosis Techniques: Stochastic Models, Methods and Applications. Springer-Verlag GmbH.</li>
@@ -1225,7 +1248,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-3">
-                            <h5 className="text-[10px] font-bold text-accent-teal uppercase tracking-widest border-l-2 border-accent-teal pl-3">Jurnal Ilmiah (Model & Validasi)</h5>
+                            <h5 className="text-[10px] font-bold text-accent-teal uppercase tracking-widest border-l-2 border-accent-teal pl-3">{ctx.methodology.references.journals}</h5>
                             <ul className="text-[11px] text-slate-500 italic leading-relaxed space-y-2 pl-4">
                               <li>Si, X.-S., Wang, W., Hu, C.-H., & Zhou, D. H. (2011). Remaining useful life estimation—a review on the statistical data driven approaches. European Journal of Operational Research, 213(1).</li>
                               <li>Wang, B., Lei, Y., Li, N., & Li, N. (2020). A Hybrid Prognostics Approach for Estimating Remaining Useful Life of Rolling Element Bearings. IEEE Transactions on Reliability.</li>
@@ -1237,9 +1260,9 @@ export default function App() {
                             </ul>
                           </div>
                         </div>
-                     </div>
+                      </div>
 
-                     <div className="flex flex-col items-center text-center space-y-6 pt-12 border-t border-slate-800/30">
+                      <div className="flex flex-col items-center text-center space-y-6 pt-12 border-t border-slate-800/30">
                         <div className="h-20 w-20 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-accent-teal font-serif text-3xl shadow-2xl">LS</div>
                         <div className="space-y-2">
                           <h4 className="text-white font-bold text-xl tracking-tight">Luthfianda Salsabila</h4>
@@ -1247,11 +1270,13 @@ export default function App() {
                         </div>
                         <div className="bg-accent-teal/5 border border-accent-teal/10 px-6 py-3 rounded-2xl max-w-sm">
                            <p className="text-[10px] text-accent-teal font-bold uppercase tracking-[0.2em] leading-relaxed flex flex-col items-center gap-2">
-                             <span className="flex items-center gap-2"><CheckCircle2 size={14} /> Partisipasi Kompetisi</span>
+                             <span className="flex items-center gap-2"><CheckCircle2 size={14} /> {ctx.methodology.participation}</span>
                              <span className="text-white">Google #JuaraVibeCoding Season 1</span>
                            </p>
                         </div>
-                     </div>
+                      </div>
+                  </div>
+
                   </div>
 
                 </motion.div>
@@ -1261,10 +1286,10 @@ export default function App() {
         )}
         {/* Footer info matching design */}
         <footer className="mt-auto border-t border-slate-800 pt-6 flex flex-col md:flex-row justify-between items-center text-[10px] text-slate-600 font-mono tracking-widest gap-4">
-          <div>MATLAB_CORE ENGINE V1.8 | PRECISION: 64-BIT | UNIT: DAYS</div>
+          <div>{ctx.methodology.footer.engine}</div>
           <div className="flex gap-8">
             <span className="text-slate-500 uppercase">Bearing Series: AH-1042</span>
-            <span className="text-accent-teal border-b border-accent-teal/40 pb-0.5">DASHBOARD_COLLECTING</span>
+            <span className="text-accent-teal border-b border-accent-teal/40 pb-0.5">{ctx.methodology.footer.collecting}</span>
           </div>
         </footer>
       </main>
